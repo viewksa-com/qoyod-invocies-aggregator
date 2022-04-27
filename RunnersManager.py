@@ -70,8 +70,8 @@ class RunnersManager:
 
 		invoices_url = self.base_url
 		options = Options()
-		options.add_argument('--headless')
-		options.add_argument('--disable-gpu')  # Last I checked this was necessary.
+		#options.add_argument('--headless')
+		#options.add_argument('--disable-gpu')  # Last I checked this was necessary.
 
 		driver = webdriver.Chrome(chrome_options=options,service=Service(ChromeDriverManager().install()))
 		driver.get("https://www.qoyod.com/tenant/invoices")
