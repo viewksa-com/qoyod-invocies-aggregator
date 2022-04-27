@@ -2,6 +2,7 @@ import json
 import math
 import logging
 from datetime import datetime
+import sys
 import threading
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -47,7 +48,8 @@ class RunnersManager:
 					"progress":0,
 					"total": len(batch),
 					"filename": filename,
-					"failed_ids": []
+					"failed_ids": [],
+					"thread":None
 				})
 				f.close()
 		self.logger.info('Prepared '+str(valid_batches)+' Runners')
@@ -57,8 +59,14 @@ class RunnersManager:
 		self.logger.info('Initializeing threads')
 		for runner in self.runners:
 			t = threading.Thread(target=self.__scrapper_async, args=[runner["id"],email,password])
-			t.daemon = True #die with parent
+			#t.daemon = True #die with parent
 			t.start()
+			runner['thread'] = t
+		try:
+			for runner in self.runners:
+				runner['thread'].join()
+		except KeyboardInterrupt:
+			sys.exit()
 
 	def __scrapper_async(self,run_id,email,qoyod_pass):
 		self.logger.info('Initializing thread '+str(run_id))
