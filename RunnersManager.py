@@ -57,6 +57,7 @@ class RunnersManager:
 		self.logger.info('Initializeing threads')
 		for runner in self.runners:
 			t = threading.Thread(target=self.__scrapper_async, args=[runner["id"],email,password])
+			t.daemon = True #die with parent
 			t.start()
 
 	def __scrapper_async(self,run_id,email,qoyod_pass):
