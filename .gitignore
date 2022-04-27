@@ -3,3 +3,7 @@ pass
 missed ids
 *.zip
 *-api-P*.json
+working-directory
+.secret
+*.log
+*.pyc
