@@ -77,10 +77,10 @@ if not debug_step or debug_step == 3:
 
 		while(True):
 			for idx,line in enumerate(manager.get_progress_report()):
-				stdscr.add()
+				stdscr.addstr(idx,0,line)
 			stdscr.refresh()
 			time.sleep(2)
-			if(manager.check_all_done() == False):
+			if(manager.check_all_done() == True):
 				break
 		manager.save_failed_runs()
 	except KeyboardInterrupt:
