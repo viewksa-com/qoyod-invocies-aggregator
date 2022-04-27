@@ -67,6 +67,12 @@ class RunnersManager:
 				runner['thread'].join()
 		except KeyboardInterrupt:
 			sys.exit()
+		finally:
+			with open('failed-runs','w') as fr:
+				failed_data=[]
+				for runner in self.runners:
+					failed_data.extend(runner['failed_ids'])
+				json.dump(failed_data,fr)
 
 	def __scrapper_async(self,run_id,email,qoyod_pass):
 		self.logger.info('Initializing thread '+str(run_id))
