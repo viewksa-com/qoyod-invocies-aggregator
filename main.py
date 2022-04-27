@@ -4,12 +4,19 @@ import datetime
 import os
 import shutil
 import multiprocessing
+import sys
+import time
+import curses
 
 from RunnersManager import RunnersManager
 
 multiprocessing.cpu_count()
 from QoyodService import QoyodService
+
 debug_step=0
+if(len(sys.argv)>2):
+	debug_step=int(sys.argv[2])
+
 #Read config
 config = configparser.ConfigParser()
 secrets = configparser.ConfigParser()
@@ -28,14 +35,15 @@ logging.basicConfig(filename = config.get('shared','logfile'),
 logger = logging.getLogger(config.get('shared','logger'))
 logger.info('New session')
 
-new_session = input('Starting a new session will erase data in working directory, do you want to proceed [Y/N]')
-if not debug_step and new_session.upper() != 'Y':
-	logger.info('Session terminated')
-	exit()
-if not debug_step and os.path.exists("working-directory"):
-	shutil.rmtree('working-directory')
-
 if not debug_step or debug_step == 1:
+	new_session = input('Starting a new session will erase data in working directory, do you want to proceed [Y/N]')
+	if not debug_step and new_session.upper() != 'Y':
+		logger.info('Session terminated')
+		exit()
+	if not debug_step and os.path.exists("working-directory"):
+		shutil.rmtree('working-directory')
+
+
 	start_date = input('Enter start date in YYYY-MM-DD format:\n>>')
 	start_datetime=datetime.datetime.strptime(start_date, "%Y-%m-%d") 
 
@@ -55,10 +63,32 @@ if not debug_step or debug_step == 2:
 	found_count =service.saveInvoices(start_date,end_date,per_page=int(config.get("qoyod","per_page")))
 	print('Done, saved '+str(found_count)+ ' invoices to disk')
 
-num_of_runners = int(input('How many bot instances to use? Recommended for your device is '+str(multiprocessing.cpu_count())+ " \n>>"))
 
+num_of_runners = int(input('How many bot instances to use? Recommended for your device is '+str(multiprocessing.cpu_count())+ " \n>>"))
 print("Running "+str(num_of_runners)+ " bots")
 manager = RunnersManager(num_of_runners, in_file="data.json", out_file="data.csv")
-manager.run(secrets.get("qoyod","email"),secrets.get("qoyod","pass"))
-# while(manager.check_all_done() == False):
-# 	print(manager.get_progress_report())
+if not debug_step or debug_step == 3:
+	try:
+		manager.run(secrets.get("qoyod","email"),secrets.get("qoyod","pass"))
+
+		stdscr = curses.initscr()
+		curses.noecho()
+		curses.cbreak()
+
+		while(True):
+			for idx,line in enumerate(manager.get_progress_report()):
+				stdscr.add()
+			stdscr.refresh()
+			time.sleep(2)
+			if(manager.check_all_done() == False):
+				break
+		manager.save_failed_runs()
+	except KeyboardInterrupt:
+				os._exit(0)
+
+if not debug_step or debug_step == 4:
+	print('\nPost processing data')
+	manager.save_output()
+	print('saved to output.csv')
+
+print('\nfinished')

@@ -1,9 +1,12 @@
+import glob
 import json
 import math
 import logging
 from datetime import datetime
+import pandas as pd
 import sys
 import threading
+from unittest import runner
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
@@ -62,123 +65,148 @@ class RunnersManager:
 			#t.daemon = True #die with parent
 			t.start()
 			runner['thread'] = t
-		try:
+
+	def save_failed_runs(self):
+		with open('failed-runs','w') as fr:
+			failed_data=[]
 			for runner in self.runners:
-				runner['thread'].join()
-		except KeyboardInterrupt:
-			sys.exit()
-		finally:
-			with open('failed-runs','w') as fr:
-				failed_data=[]
-				for runner in self.runners:
-					failed_data.extend(runner['failed_ids'])
-				json.dump(failed_data,fr)
-				fr.close()
-
+				failed_data.extend(runner['failed_ids'])
+			json.dump(failed_data,fr)
+			fr.close()
 	def __scrapper_async(self,run_id,email,qoyod_pass):
-		self.logger.info('Initializing thread '+str(run_id))
-		runner_data = self.runners[run_id]
-		datasourcename = runner_data['filename']
+		try:
+			self.logger.info('Initializing thread '+str(run_id))
+			runner_data = self.runners[run_id]
+			datasourcename = runner_data['filename']
 
-		f= open(datasourcename,'r', encoding='utf-8')
-		data = json.load(f)
-		f.close()
+			f= open(datasourcename,'r', encoding='utf-8')
+			data = json.load(f)
+			f.close()
 
-		invoices_url = self.base_url
-		options = Options()
-		options.add_argument('--headless')
-		options.add_argument('--disable-gpu')  # Last I checked this was necessary.
+			invoices_url = self.base_url
+			options = Options()
+			options.add_argument('--headless')
+			options.add_argument('--disable-gpu')  # Last I checked this was necessary.
 
-		driver = webdriver.Chrome(chrome_options=options,service=Service(ChromeDriverManager().install()))
-		driver.get("https://www.qoyod.com/tenant/invoices")
+			driver = webdriver.Chrome(chrome_options=options,service=Service(ChromeDriverManager().install()))
+			driver.get("https://www.qoyod.com/tenant/invoices")
 
-		# wait for element to appear, then hover it
-		wait = WebDriverWait(driver, 10)
-		men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//*[@id="user_email"]')))
-		ActionChains(driver).move_to_element(men_menu).perform()
+			# wait for element to appear, then hover it
+			wait = WebDriverWait(driver, 10)
+			men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//*[@id="user_email"]')))
+			ActionChains(driver).move_to_element(men_menu).perform()
 
-		email_field = driver.find_element_by_id('user_email')
-		email_field.send_keys(email)
-		
-		pass_field = driver.find_element_by_id('user_password')
-		pass_field.send_keys(qoyod_pass)
+			email_field = driver.find_element_by_id('user_email')
+			email_field.send_keys(email)
+			
+			pass_field = driver.find_element_by_id('user_password')
+			pass_field.send_keys(qoyod_pass)
 
-		login_btn = driver.find_element_by_id('login-submit')
-		login_btn.click()
+			login_btn = driver.find_element_by_id('login-submit')
+			login_btn.click()
 
-		# wait for element to appear, then hover it
-		wait = WebDriverWait(driver, 10)
-		men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//*[@id="flash"]')))
-		ActionChains(driver).move_to_element(men_menu).perform()
-		self.logger.info('Thread '+str(runner_data['id'])+' is now logged in')
+			# wait for element to appear, then hover it
+			wait = WebDriverWait(driver, 10)
+			men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//*[@id="flash"]')))
+			ActionChains(driver).move_to_element(men_menu).perform()
+			self.logger.info('Thread '+str(runner_data['id'])+' is now logged in')
 
-		csv_file = open('output-'+str(run_id)+'.csv', 'w')
-		writer = csv.writer(csv_file)
+			csv_file = open('output-'+str(run_id)+'.csv', 'w')
+			writer = csv.writer(csv_file)
 
-		for invoice in data :
-			try:
-				inv_id = invoice['id']
-				url=invoices_url+str(inv_id)
-				driver.get(url)
-				
-				wait = WebDriverWait(driver, 10)
-				men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//address/span/b/a')))
-
+			for invoice in data :
 				try:
-					ActionChains(driver).move_to_element(men_menu).perform()
+					inv_id = invoice['id']
+					url=invoices_url+str(inv_id)
+					driver.get(url)
+					
+					wait = WebDriverWait(driver, 10)
+					men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//address/span/b/a')))
+
+					try:
+						ActionChains(driver).move_to_element(men_menu).perform()
+					except NoSuchElementException:
+						for try_num in range(4):
+							self.logger.info('trying again for possible 500 error')
+							driver.get(url)
+							wait = WebDriverWait(driver, 10)
+							men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//address/span/b/a')))
+							if driver.find_elements(By.XPATH,'//address/span/b'):
+								ActionChains(driver).move_to_element(men_menu).perform()
+					addresses = driver.find_elements(By.XPATH,'//address/span/b')
+
+					if(len(addresses)>0):
+						name_field= addresses[0]
+					
+					# name_field = driver.find_element_by_xpath('//address/span/b/a')
+					branch_field = driver.find_elements(By.XPATH,"//div[@class='form-group clearfix']//span[@class='col-xs-6 col-sm-6 pl0 pr0']")[-1]
+					route_field = driver.find_element_by_xpath("//ul[@id='comments-list']//span[@class='comment-owner']")
+					audit_field = driver.find_element_by_xpath("//ul[@id='comments-list']//span[@class='audit-info']")
+
+					client_name = name_field.text
+					branch_name = branch_field.text
+					route_name = route_field.text
+
+
+					stamp = 'N/A'
+					audit_json =audit_field.get_attribute('data-data')
+					if(audit_json):
+						audit_data= json.loads(audit_json)
+						if('approved_at' in audit_data):
+							stamp=audit_data['approved_at']
+						elif(invoice['qrcode_string']):
+							qr=invoice['qrcode_string']
+							content=base64.b64decode(qr)
+							timedata=content.decode('utf-8').split('310562405700003')[1]
+							utc = re.findall(r'20[0-9]{2}[0-9\-T:Z]+',timedata)[0]
+							dt = datetime.strptime(utc,'%Y-%m-%dT%H:%M:%S%z')
+							stamp=str(dt.astimezone(pytz.timezone('Asia/Riyadh')))
+						else:
+							stamp = audit_data['issue_date']
+					for item in invoice['line_items']:
+						vat = 'N/A'
+						if(item['tax_percent'] and item['unit_price'] and item['quantity']):
+							vat= float(item['tax_percent']) * float(item['unit_price']) * float(item['quantity'])/100			
+						row = [invoice['reference'],item['product_name'],item['product_id'],item['quantity'],item['unit_price'],vat,client_name,route_name,invoice['issue_date'],stamp,branch_name]
+						writer.writerow(row)
+					csv_file.flush()
+					time.sleep(3)
 				except NoSuchElementException:
-					for try_num in range(4):
-						self.logger.info('trying again for possible 500 error')
-						driver.get(url)
-						wait = WebDriverWait(driver, 10)
-						men_menu = wait.until(ec.visibility_of_element_located((By.XPATH, '//address/span/b/a')))
-						if driver.find_elements(By.XPATH,'//address/span/b'):
-							ActionChains(driver).move_to_element(men_menu).perform()
-				addresses = driver.find_elements(By.XPATH,'//address/span/b')
+					self.logger.error('No such element error')
+					self.runners[run_id]['failed_ids'].append(invoice['id'])
+				except Exception as e:
+					self.logger.error(e)
+					self.logger.error('Error in thread '+str(run_id))
+					self.runners[run_id]['failed_ids'].append(invoice['id'])
+				finally:
+					self.runners[run_id]['progress'] = self.runners[run_id]['progress'] + 1
+			self.runners[run_id]['progress']=self.runners[run_id]['total']
+			csv_file.close()
+			self.logger.info('done with thread '+str(run_id))
+		except KeyboardInterrupt:
+			self.logger.info('interrupted thread '+str(run_id))
+			sys.exit(0)
 
-				if(len(addresses)>0):
-					name_field= addresses[0]
-				
-				# name_field = driver.find_element_by_xpath('//address/span/b/a')
-				branch_field = driver.find_elements(By.XPATH,"//div[@class='form-group clearfix']//span[@class='col-xs-6 col-sm-6 pl0 pr0']")[-1]
-				route_field = driver.find_element_by_xpath("//ul[@id='comments-list']//span[@class='comment-owner']")
-				audit_field = driver.find_element_by_xpath("//ul[@id='comments-list']//span[@class='audit-info']")
+	def check_all_done(self):
+		return not any(runner['progress']!=runner['total'] for runner in self.runners)
+	
+	def get_progress_report(self):
+		return map(self.__get_runner_summary,self.runners)
 
-				client_name = name_field.text
-				branch_name = branch_field.text
-				route_name = route_field.text
+	def __get_runner_summary(self,runner):
+		return "Runner: "+str(runner['id'])+" progress: "+str(runner['progress'])+"/"+str(runner['total'])+",  fails: "+str(len(runner['failed_ids']))
+	
+	def save_output(self):
+		self.logger.info('Post processing output files')
 
-
-				stamp = 'N/A'
-				audit_json =audit_field.get_attribute('data-data')
-				if(audit_json):
-					audit_data= json.loads(audit_json)
-					if('approved_at' in audit_data):
-						stamp=audit_data['approved_at']
-					elif(invoice['qrcode_string']):
-						qr=invoice['qrcode_string']
-						content=base64.b64decode(qr)
-						timedata=content.decode('utf-8').split('310562405700003')[1]
-						utc = re.findall(r'20[0-9]{2}[0-9\-T:Z]+',timedata)[0]
-						dt = datetime.strptime(utc,'%Y-%m-%dT%H:%M:%S%z')
-						stamp=str(dt.astimezone(pytz.timezone('Asia/Riyadh')))
-					else:
-						stamp = audit_data['issue_date']
-				for item in invoice['line_items']:
-					vat = 'N/A'
-					if(item['tax_percent'] and item['unit_price'] and item['quantity']):
-						vat= float(item['tax_percent']) * float(item['unit_price']) * float(item['quantity'])/100			
-					row = [invoice['reference'],item['product_name'],item['product_id'],item['quantity'],item['unit_price'],vat,client_name,route_name,invoice['issue_date'],stamp,branch_name]
-					writer.writerow(row)
-				csv_file.flush()
-				self.runners[run_id]['progress'] = self.runners[run_id]['progress'] + 1
-				time.sleep(3)
-			except NoSuchElementException:
-				self.logger.error('No such element error')
-				self.runners[run_id]['failed_ids'].append(invoice['id'])
-			except Exception as e:
-				self.logger.error(e)
-				self.logger.error('Error in thread '+str(run_id))
-				self.runners[run_id]['failed_ids'].append(invoice['id'])
-		csv_file.close()
-		self.logger.info('done with thread '+str(run_id))
+		extension = 'csv'
+		all_filenames = [i for i in glob.glob('output-*.{}'.format(extension))]
+		self.logger.info(','.join(all_filenames))
+		#combine all files in the list
+		combined_csv = pd.concat([pd.read_csv(f,header=None) for f in all_filenames ])
+		combined_csv = combined_csv.sort_values(by=combined_csv.columns[-2])
+		#clear prefix
+		combined_csv[7]=combined_csv[7].apply(lambda s: s.replace('أُنشِئ بواسطة ',''))
+		#export to csv
+		self.logger.info('saved to output.csv')
+		combined_csv.to_csv( "output.csv", index=False, encoding='utf-8-sig')
