@@ -52,7 +52,8 @@ class RunnersManager:
 					"total": len(batch),
 					"filename": filename,
 					"failed_ids": [],
-					"thread":None
+					"thread":None,
+					"on": False,
 				})
 				f.close()
 		self.logger.info('Prepared '+str(valid_batches)+' Runners')
@@ -113,7 +114,7 @@ class RunnersManager:
 
 			csv_file = open('output-'+str(run_id)+'.csv', 'w')
 			writer = csv.writer(csv_file)
-
+			self.runners[run_id]['on']=True
 			for invoice in data :
 				try:
 					inv_id = invoice['id']
@@ -191,7 +192,11 @@ class RunnersManager:
 		return not any(runner['progress']!=runner['total'] for runner in self.runners)
 	
 	def get_progress_report(self):
-		return map(self.__get_runner_summary,self.runners)
+		state =(runner['on'] for runner in self.runners)
+		if(all(state)):
+			return map(self.__get_runner_summary,self.runners)
+		else:
+			return ["Waiting  all runners to start "+str(sum(state))+"/"+str(len(self.runners))]
 
 	def __get_runner_summary(self,runner):
 		return "Runner: "+str(runner['id'])+" progress: "+str(runner['progress'])+"/"+str(runner['total'])+",  fails: "+str(len(runner['failed_ids']))

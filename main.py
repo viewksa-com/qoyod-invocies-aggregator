@@ -36,7 +36,7 @@ logger = logging.getLogger(config.get('shared','logger'))
 logger.info('New session')
 
 if not debug_step or debug_step == 1:
-	new_session = input('Starting a new session will erase data in working directory, do you want to proceed [Y/N]')
+	new_session = input('Starting a new session will erase data in working directory, do you want to proceed [Y/N]\n>>')
 	if not debug_step and new_session.upper() != 'Y':
 		logger.info('Session terminated')
 		exit()
